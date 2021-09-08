@@ -1,5 +1,6 @@
 
 use crate::http::QueryString;
+use crate::http::QueryStringValue as QueryStringValue;
 
 use super::{http::{Response, StatusCode, Method}, server::Handler};
 use std::{fs};
@@ -31,21 +32,21 @@ impl WebsiteHandler {
         }
     }
 
-    pub fn try_sum(&self, query_str: Option<&QueryString>) -> Option<i32> {
-        let query_str = query_str?;
-        let nums_strings = query_str.get("nums").or(None)?;
-        let vec: &Vec<&str>;
-        match nums_strings {
-            crate::http::QueryStringValue::Single(v) => return v.parse::<i32>().ok(),
-            crate::http::QueryStringValue::Multiple(m) => vec = m,
-        };
-        vec.iter()
-            .map(|&x| x.parse::<i32>())
-            .fold(Some(0i32),|acc, i| match (acc, i) {
-                (None, _) => None,
-                (_, Err(_)) => None,
-                (Some(acc), Ok(parsed)) => acc.checked_add(parsed)
+    pub fn try_sum2(&self, query_str: Option<&QueryString>) -> Option<i32> {
+        query_str
+            .and_then(|x| x.get("nums"))
+            .map(|x|  match x {
+                QueryStringValue::Single(s) => vec!(*s),
+                QueryStringValue::Multiple(m) => m.to_vec(),
             })
+            .and_then(|x| 
+                x.iter()
+                .map(|s| s.parse::<i32>().ok())
+                .fold(Some(0i32), |acc, e| match (acc,e) {
+                    (Some(a), Some(b)) => a.checked_add(b),
+                    (_,_) => None
+                })
+            )
     }
 }
 
@@ -57,7 +58,7 @@ impl Handler for WebsiteHandler {
                 "/" => Response::new(StatusCode::Ok, self.read_file("index.html")),
                 "/hello" => Response::new(StatusCode::Ok, self.read_file("hello.html")),
                 "/best" => Response::new(StatusCode::Ok, Some("<h1>Best</h1>".to_string())),
-                "/sum" => match &self.try_sum(request.query_string()) {
+                "/sum" => match self.try_sum2(request.query_string()) {
                     Some(result) => Response::new(StatusCode::Ok, Some(format!("<h1>Sum is: {}</h1>", result))),
                     None => Response::new(StatusCode::BadRequest, None),
                 },
